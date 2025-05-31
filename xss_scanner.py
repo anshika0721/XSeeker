@@ -6,7 +6,7 @@ import json
 import logging
 import hashlib
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qsl, urlunparse, urlencode
 from typing import List, Dict, Set, Optional
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
@@ -18,6 +18,8 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from xss_payloads import XSSPayloads
 from report_generator import ReportGenerator
+import time
+from datetime import datetime
 
 # Initialize colorama
 colorama.init()
@@ -76,7 +78,22 @@ class XSSScanner:
             return None
             
         try:
-            self.browser.get(url)
+            # Add payload to URL parameters
+            parsed_url = urlparse(url)
+            params = dict(parse_qsl(parsed_url.query))
+            params['test'] = payload
+            test_url = urlunparse((
+                parsed_url.scheme,
+                parsed_url.netloc,
+                parsed_url.path,
+                parsed_url.params,
+                urlencode(params),
+                parsed_url.fragment
+            ))
+            
+            self.browser.get(test_url)
+            # Wait for potential XSS execution
+            time.sleep(2)
             return self.browser.get_screenshot_as_png()
         except Exception as e:
             self.logger.error(f"Error capturing screenshot: {str(e)}")
@@ -156,6 +173,10 @@ class XSSScanner:
         if not href:
             return
             
+        # Skip mailto: links and other non-http(s) protocols
+        if href.startswith(('mailto:', 'tel:', 'javascript:', '#')):
+            return
+            
         for payload in self.payloads.get_all_payloads():
             try:
                 test_url = urljoin(url, href)
@@ -191,18 +212,42 @@ class XSSScanner:
         """Extract relevant snippet from response for evidence"""
         try:
             soup = BeautifulSoup(response.text, 'html.parser')
+            evidence = []
+            
             # Find the element containing the payload
             for element in soup.find_all():
                 if payload in str(element):
-                    return str(element)
-            return response.text[:500] + "..."  # Return first 500 chars if no specific element found
-        except:
-            return response.text[:500] + "..."
+                    # Get parent element for context
+                    parent = element.parent
+                    if parent:
+                        evidence.append(f"Context: {parent.name}")
+                        evidence.append(f"Element: {element.name}")
+                        evidence.append(f"Content: {str(element)}")
+                        evidence.append(f"Full HTML: {str(parent)}")
+                        break
+            
+            if not evidence:
+                # If no specific element found, get the first 1000 chars
+                evidence.append("No specific element found containing payload")
+                evidence.append("Response snippet:")
+                evidence.append(response.text[:1000])
+            
+            return "\n".join(evidence)
+        except Exception as e:
+            self.logger.error(f"Error getting evidence: {str(e)}")
+            return response.text[:1000]
 
     def report_vulnerability(self, url: str, vuln_type: str, payload: str, response: requests.Response) -> None:
         """Report found vulnerability with evidence and screenshot"""
         # Generate unique ID for this vulnerability
         vuln_id = hashlib.md5(f"{url}{payload}".encode()).hexdigest()[:8]
+        
+        # Check for duplicates using a more robust comparison
+        for existing_vuln in self.vulnerabilities:
+            if (existing_vuln['url'] == url and 
+                existing_vuln['type'] == vuln_type and 
+                existing_vuln['payload'].strip() == payload.strip()):
+                return
         
         # Capture screenshot
         screenshot = self.capture_screenshot(url, payload)
@@ -213,6 +258,9 @@ class XSSScanner:
         # Get evidence snippet
         evidence = self.get_evidence_snippet(response, payload)
         
+        # Get response headers
+        headers = dict(response.headers)
+        
         vulnerability = {
             'url': url,
             'type': vuln_type,
@@ -220,15 +268,16 @@ class XSSScanner:
             'response_length': len(response.text),
             'status_code': response.status_code,
             'screenshot': screenshot_path,
-            'evidence': evidence
+            'evidence': evidence,
+            'headers': headers,
+            'timestamp': datetime.now().isoformat(),
+            'vulnerability_id': vuln_id
         }
         
-        # Check for duplicates
-        if not any(v['url'] == url and v['payload'] == payload for v in self.vulnerabilities):
-            self.vulnerabilities.append(vulnerability)
-            self.logger.warning(f"{Fore.RED}[!] Found XSS vulnerability in {url} ({vuln_type}){Style.RESET_ALL}")
-            self.logger.warning(f"Payload: {payload}")
-            self.logger.warning(f"Evidence: {evidence[:100]}...")
+        self.vulnerabilities.append(vulnerability)
+        self.logger.warning(f"{Fore.RED}[!] Found XSS vulnerability in {url} ({vuln_type}){Style.RESET_ALL}")
+        self.logger.warning(f"Payload: {payload}")
+        self.logger.warning(f"Evidence: {evidence[:100]}...")
 
     def generate_report(self) -> None:
         """Generate detailed reports"""
