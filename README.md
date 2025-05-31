@@ -1,5 +1,3 @@
-# XSeeker
-
 # Advanced XSS Vulnerability Scanner
 
 A comprehensive XSS vulnerability scanner that detects various types of XSS vulnerabilities including Reflected, Stored, DOM-based, Blind, Mutation, Self, mXSS, Event-based, and Polyglot XSS. The scanner includes WAF bypass capabilities, payload fuzzing, and automated reporting.
@@ -38,13 +36,27 @@ A comprehensive XSS vulnerability scanner that detects various types of XSS vuln
 
 ## Installation
 
+### Kali Linux Installation
+
 1. Clone the repository:
 ```bash
-git clone https://github.com/anshika0721/XSeeker.git
-cd XSeeker
+git clone https://github.com/yourusername/xss-scanner.git
+cd xss-scanner
 ```
 
-2. Install the required dependencies:
+2. Create and activate virtual environment:
+```bash
+# Install python3-venv if not already installed
+sudo apt install python3-venv
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+```
+
+3. Install the required dependencies:
 ```bash
 pip install -r requirements.txt
 ```
