@@ -40,7 +40,7 @@ A comprehensive XSS vulnerability scanner that detects various types of XSS vuln
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/xss-scanner.git
+git clone https://github.com/anshika0721/XSeeker.git
 cd xss-scanner
 ```
 
