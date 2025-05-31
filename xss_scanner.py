@@ -47,18 +47,34 @@ class XSSScanner:
 
     def setup_browser(self):
         """Setup headless Chrome browser for screenshots"""
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        
-        service = Service(ChromeDriverManager().install())
-        self.browser = webdriver.Chrome(service=service, options=chrome_options)
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            
+            # Try to use Chromium first
+            try:
+                service = Service('/usr/bin/chromedriver')
+                self.browser = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception as e:
+                self.logger.warning(f"Failed to use system Chromium: {str(e)}")
+                self.logger.info("Falling back to webdriver-manager...")
+                service = Service(ChromeDriverManager().install())
+                self.browser = webdriver.Chrome(service=service, options=chrome_options)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to initialize browser: {str(e)}")
+            self.logger.warning("Screenshots will not be available")
+            self.browser = None
 
     def capture_screenshot(self, url: str, payload: str) -> Optional[bytes]:
         """Capture screenshot of the page with XSS payload"""
+        if not self.browser:
+            return None
+            
         try:
             self.browser.get(url)
             return self.browser.get_screenshot_as_png()
@@ -248,7 +264,8 @@ class XSSScanner:
             
         finally:
             # Cleanup
-            self.browser.quit()
+            if self.browser:
+                self.browser.quit()
 
 if __name__ == "__main__":
     import argparse
