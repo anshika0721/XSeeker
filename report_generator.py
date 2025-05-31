@@ -6,6 +6,7 @@ import base64
 from datetime import datetime
 from typing import List, Dict
 from jinja2 import Template
+import logging
 
 class ReportGenerator:
     def __init__(self, output_dir: str = "reports"):
@@ -21,116 +22,74 @@ class ReportGenerator:
 
     def _load_template(self) -> Template:
         """Load HTML report template"""
-        template_str = """
+        return """
         <!DOCTYPE html>
-        <html lang="en">
+        <html>
         <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>XSS Vulnerability Report</title>
             <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    margin: 0;
-                    padding: 20px;
-                    background-color: #f5f5f5;
-                }
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    background-color: white;
-                    padding: 20px;
-                    border-radius: 5px;
-                    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-                }
-                .header {
-                    text-align: center;
-                    margin-bottom: 30px;
-                    padding-bottom: 20px;
-                    border-bottom: 2px solid #eee;
-                }
-                .vulnerability {
-                    margin-bottom: 30px;
-                    padding: 20px;
-                    border: 1px solid #ddd;
-                    border-radius: 5px;
-                    background-color: #fff;
-                }
-                .vulnerability h3 {
-                    margin-top: 0;
-                    color: #d32f2f;
-                }
-                .details {
-                    margin: 15px 0;
-                }
-                .details p {
-                    margin: 5px 0;
-                }
-                .screenshot {
-                    max-width: 100%;
-                    margin: 15px 0;
-                    border: 1px solid #ddd;
-                }
-                .evidence {
-                    background-color: #f8f9fa;
-                    padding: 15px;
-                    border-radius: 5px;
-                    font-family: monospace;
-                    white-space: pre-wrap;
-                    word-break: break-all;
-                }
-                .timestamp {
-                    color: #666;
-                    font-size: 0.9em;
-                }
-                .summary {
-                    margin-bottom: 30px;
-                    padding: 20px;
-                    background-color: #e3f2fd;
-                    border-radius: 5px;
-                }
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .vulnerability { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+                .vulnerability:hover { box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+                .header { background: #f5f5f5; padding: 10px; margin: -15px -15px 15px -15px; border-radius: 5px 5px 0 0; }
+                .evidence { background: #f8f8f8; padding: 10px; border-radius: 3px; margin: 10px 0; }
+                .screenshot { max-width: 100%; margin: 10px 0; border: 1px solid #ddd; }
+                .payload { color: #d63384; font-family: monospace; }
+                .timestamp { color: #666; font-size: 0.9em; }
+                .headers { background: #f8f8f8; padding: 10px; border-radius: 3px; margin: 10px 0; }
+                .headers pre { margin: 0; white-space: pre-wrap; }
+                .vuln-id { color: #666; font-size: 0.9em; }
+                .severity-high { border-left: 5px solid #dc3545; }
+                .severity-medium { border-left: 5px solid #ffc107; }
+                .severity-low { border-left: 5px solid #0dcaf0; }
             </style>
         </head>
         <body>
-            <div class="container">
+            <h1>XSS Vulnerability Report</h1>
+            <p>Target URL: {{ target_url }}</p>
+            <p>Scan completed at: {{ scan_time }}</p>
+            <p>Total vulnerabilities found: {{ vulnerabilities|length }}</p>
+            
+            {% for vuln in vulnerabilities %}
+            <div class="vulnerability severity-{{ vuln.severity|default('medium') }}">
                 <div class="header">
-                    <h1>XSS Vulnerability Report</h1>
-                    <p class="timestamp">Generated on: {{ timestamp }}</p>
+                    <h2>XSS Vulnerability #{{ loop.index }}</h2>
+                    <div class="vuln-id">ID: {{ vuln.vulnerability_id }}</div>
+                    <div class="timestamp">Found at: {{ vuln.timestamp }}</div>
                 </div>
                 
-                <div class="summary">
-                    <h2>Scan Summary</h2>
-                    <p>Target URL: {{ target_url }}</p>
-                    <p>Total Vulnerabilities Found: {{ vulnerabilities|length }}</p>
+                <h3>Details</h3>
+                <ul>
+                    <li><strong>URL:</strong> {{ vuln.url }}</li>
+                    <li><strong>Type:</strong> {{ vuln.type }}</li>
+                    <li><strong>Status Code:</strong> {{ vuln.status_code }}</li>
+                    <li><strong>Response Length:</strong> {{ vuln.response_length }} bytes</li>
+                </ul>
+
+                <h3>Payload</h3>
+                <div class="evidence">
+                    <pre class="payload">{{ vuln.payload }}</pre>
                 </div>
 
-                {% for vuln in vulnerabilities %}
-                <div class="vulnerability">
-                    <h3>Vulnerability #{{ loop.index }}</h3>
-                    <div class="details">
-                        <p><strong>URL:</strong> {{ vuln.url }}</p>
-                        <p><strong>Type:</strong> {{ vuln.type }}</p>
-                        <p><strong>Payload:</strong> <code>{{ vuln.payload }}</code></p>
-                        <p><strong>Status Code:</strong> {{ vuln.status_code }}</p>
-                        
-                        {% if vuln.screenshot %}
-                        <h4>Screenshot Evidence:</h4>
-                        <img class="screenshot" src="data:image/png;base64,{{ vuln.screenshot }}" alt="XSS Screenshot">
-                        {% endif %}
-                        
-                        {% if vuln.evidence %}
-                        <h4>Response Evidence:</h4>
-                        <div class="evidence">{{ vuln.evidence }}</div>
-                        {% endif %}
-                    </div>
+                <h3>Evidence</h3>
+                <div class="evidence">
+                    <pre>{{ vuln.evidence }}</pre>
                 </div>
-                {% endfor %}
+
+                {% if vuln.screenshot %}
+                <h3>Screenshot</h3>
+                <img class="screenshot" src="data:image/png;base64,{{ vuln.screenshot }}" alt="XSS Proof of Concept">
+                {% endif %}
+
+                <h3>Response Headers</h3>
+                <div class="headers">
+                    <pre>{{ vuln.headers|tojson(indent=2) }}</pre>
+                </div>
             </div>
+            {% endfor %}
         </body>
         </html>
         """
-        return Template(template_str)
 
     def save_screenshot(self, screenshot_data: bytes, vuln_id: str) -> str:
         """Save screenshot and return the path"""
@@ -141,30 +100,36 @@ class ReportGenerator:
         return filepath
 
     def generate_report(self, target_url: str, vulnerabilities: List[Dict]) -> str:
-        """Generate HTML report with screenshots"""
-        # Process vulnerabilities to include screenshots
+        """Generate HTML report with embedded screenshots"""
+        template = self._load_template()
+        
+        # Process vulnerabilities to include base64 screenshots
+        processed_vulns = []
         for vuln in vulnerabilities:
-            if 'screenshot' in vuln and vuln['screenshot']:
-                # Convert screenshot to base64 for embedding
-                with open(vuln['screenshot'], 'rb') as f:
-                    screenshot_data = f.read()
-                vuln['screenshot'] = base64.b64encode(screenshot_data).decode('utf-8')
-
-        # Generate report
-        report_html = self.template.render(
-            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            processed_vuln = vuln.copy()
+            if vuln.get('screenshot'):
+                try:
+                    with open(vuln['screenshot'], 'rb') as f:
+                        screenshot_data = base64.b64encode(f.read()).decode('utf-8')
+                        processed_vuln['screenshot'] = screenshot_data
+                except Exception as e:
+                    logging.error(f"Error processing screenshot: {str(e)}")
+                    processed_vuln['screenshot'] = None
+            processed_vulns.append(processed_vuln)
+        
+        # Render template
+        template = Template(template)
+        html_content = template.render(
             target_url=target_url,
-            vulnerabilities=vulnerabilities
+            vulnerabilities=processed_vulns,
+            scan_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
-
+        
         # Save report
-        report_path = os.path.join(
-            self.output_dir,
-            f"xss_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        )
+        report_path = os.path.join(self.output_dir, f'xss_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html')
         with open(report_path, 'w', encoding='utf-8') as f:
-            f.write(report_html)
-
+            f.write(html_content)
+            
         return report_path
 
     def save_json_report(self, vulnerabilities: List[Dict]) -> str:
