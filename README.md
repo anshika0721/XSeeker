@@ -41,7 +41,7 @@ A comprehensive XSS vulnerability scanner that detects various types of XSS vuln
 1. Clone the repository:
 ```bash
 git clone https://github.com/anshika0721/XSeeker.git
-cd xss-scanner
+cd XSeeker
 ```
 
 2. Install the required dependencies:
