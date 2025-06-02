@@ -164,9 +164,10 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     if form_method == 'get':
+                        # For GET requests, use params
                         response = self.session.get(form_url, params={input_name: payload})
                     else:
-                        # For POST requests, create a dictionary with all form fields
+                        # For POST requests, create form data
                         form_data = {}
                         for field in inputs:
                             field_name = field.get('name', '')
@@ -183,6 +184,7 @@ class XSSScanner:
                                     else:
                                         form_data[field_name] = field.get('value', '')
                         
+                        # Use data parameter for POST requests
                         response = self.session.post(form_url, data=form_data)
                     
                     if self.check_xss_success(response, payload):
@@ -200,9 +202,8 @@ class XSSScanner:
             
         for payload in self.payloads.get_all_payloads():
             try:
-                # Create a dictionary with the input parameter
-                params = {input_name: payload}
-                response = self.session.get(url, params=params)
+                # Use params for GET requests
+                response = self.session.get(url, params={input_name: payload})
                 if self.check_xss_success(response, payload):
                     self.report_vulnerability(url, 'input', payload, response, input_name)
                     
@@ -228,9 +229,8 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     test_url = urljoin(url, href)
-                    # Create a dictionary with the parameter
-                    test_params = {param_name: payload}
-                    response = self.session.get(test_url, params=test_params)
+                    # Use params for GET requests
+                    response = self.session.get(test_url, params={param_name: payload})
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'link', payload, response, param_name)
                         
@@ -240,93 +240,98 @@ class XSSScanner:
 
     def check_xss_success(self, response: requests.Response, payload: str) -> bool:
         """Check if XSS payload was successful with strict validation"""
-        # Normalize the response text and payload for comparison
-        response_text = response.text.lower()
-        normalized_payload = payload.lower()
-        
-        # Check for reflected payload (exact match)
-        if payload in response.text:
-            # Verify the payload is not in a comment or string
-            payload_index = response.text.find(payload)
-            if payload_index != -1:
-                # Check if payload is inside HTML comment
-                comment_start = response.text.rfind('<!--', 0, payload_index)
-                comment_end = response.text.find('-->', payload_index)
-                if comment_start != -1 and comment_end != -1 and comment_start < payload_index < comment_end:
-                    return False
-                
-                # Check if payload is inside a script tag string
-                script_start = response.text.rfind('<script', 0, payload_index)
-                if script_start != -1:
-                    script_end = response.text.find('</script>', payload_index)
-                    if script_end != -1:
-                        script_content = response.text[script_start:script_end]
-                        if payload in script_content and not any(payload in line.strip() for line in script_content.split('\n')):
-                            return False
+        try:
+            # Normalize the response text and payload for comparison
+            response_text = response.text.lower()
+            normalized_payload = payload.lower()
             
-            return True
-            
-        # Check for split/obfuscated payloads with strict validation
-        if '<scr' in response_text and 'ipt>' in response_text:
-            script_start = response_text.find('<scr')
-            script_end = response_text.find('ipt>', script_start)
-            if script_start != -1 and script_end != -1:
-                # Get the full context
-                context_start = max(0, script_start - 50)
-                context_end = min(len(response_text), script_end + 50)
-                context = response_text[context_start:context_end]
-                
-                # Check if it's a false positive (e.g., in a string or comment)
-                if '<!--' in context and '-->' in context:
-                    return False
+            # Check for reflected payload (exact match)
+            if payload in response.text:
+                # Verify the payload is not in a comment or string
+                payload_index = response.text.find(payload)
+                if payload_index != -1:
+                    # Check if payload is inside HTML comment
+                    comment_start = response.text.rfind('<!--', 0, payload_index)
+                    comment_end = response.text.find('-->', payload_index)
+                    if comment_start != -1 and comment_end != -1 and comment_start < payload_index < comment_end:
+                        return False
                     
-                # Check if it's part of a legitimate script tag
-                if 'script' in context and not any(c in context for c in ['\n', '\t', '\r', '\x00', '\x0A', '\x0D', '\x09', '\x0C', '\x0B', '\x0E', '\x0F', '\x1A', '\x20']):
-                    return False
+                    # Check if payload is inside a script tag string
+                    script_start = response.text.rfind('<script', 0, payload_index)
+                    if script_start != -1:
+                        script_end = response.text.find('</script>', payload_index)
+                        if script_end != -1:
+                            script_content = response.text[script_start:script_end]
+                            if payload in script_content and not any(payload in line.strip() for line in script_content.split('\n')):
+                                return False
                 
-                # Verify the split is intentional
-                between_parts = response_text[script_start+4:script_end]
-                if any(c in between_parts for c in ['\n', '\t', '\r', '\x00', '\x0A', '\x0D', '\x09', '\x0C', '\x0B', '\x0E', '\x0F', '\x1A', '\x20']):
-                    # Additional validation for split payloads
-                    if 'alert(' in response_text[script_end:script_end+100] or 'onerror=' in response_text[script_end:script_end+100]:
+                return True
+                
+            # Check for split/obfuscated payloads with strict validation
+            if '<scr' in response_text and 'ipt>' in response_text:
+                script_start = response_text.find('<scr')
+                script_end = response_text.find('ipt>', script_start)
+                if script_start != -1 and script_end != -1:
+                    # Get the full context
+                    context_start = max(0, script_start - 50)
+                    context_end = min(len(response_text), script_end + 50)
+                    context = response_text[context_start:context_end]
+                    
+                    # Check if it's a false positive (e.g., in a string or comment)
+                    if '<!--' in context and '-->' in context:
+                        return False
+                        
+                    # Check if it's part of a legitimate script tag
+                    if 'script' in context and not any(c in context for c in ['\n', '\t', '\r', '\x00', '\x0A', '\x0D', '\x09', '\x0C', '\x0B', '\x0E', '\x0F', '\x1A', '\x20']):
+                        return False
+                    
+                    # Verify the split is intentional
+                    between_parts = response_text[script_start+4:script_end]
+                    if any(c in between_parts for c in ['\n', '\t', '\r', '\x00', '\x0A', '\x0D', '\x09', '\x0C', '\x0B', '\x0E', '\x0F', '\x1A', '\x20']):
+                        # Additional validation for split payloads
+                        if 'alert(' in response_text[script_end:script_end+100] or 'onerror=' in response_text[script_end:script_end+100]:
+                            return True
+            
+            # Check for common XSS indicators with context validation
+            xss_indicators = [
+                ('<script>', '</script>'),
+                ('alert(', ')'),
+                ('onerror=', '>'),
+                ('onload=', '>'),
+                ('onclick=', '>'),
+                ('onmouseover=', '>'),
+                ('onfocus=', '>'),
+                ('ontoggle=', '>'),
+                ('onstart=', '>'),
+                ('onloadstart=', '>'),
+                ('javascript:', ';'),
+            ]
+            
+            for start_indicator, end_indicator in xss_indicators:
+                if start_indicator in response_text:
+                    # Get the context around the indicator
+                    indicator_index = response_text.find(start_indicator)
+                    context_start = max(0, indicator_index - 50)
+                    context_end = min(len(response_text), indicator_index + 100)
+                    context = response_text[context_start:context_end]
+                    
+                    # Skip if in HTML comment
+                    if '<!--' in context and '-->' in context:
+                        continue
+                        
+                    # Skip if in a string
+                    if context.count('"') % 2 == 1 or context.count("'") % 2 == 1:
+                        continue
+                    
+                    # Verify the indicator is properly terminated
+                    if end_indicator in response_text[indicator_index:indicator_index+100]:
                         return True
-        
-        # Check for common XSS indicators with context validation
-        xss_indicators = [
-            ('<script>', '</script>'),
-            ('alert(', ')'),
-            ('onerror=', '>'),
-            ('onload=', '>'),
-            ('onclick=', '>'),
-            ('onmouseover=', '>'),
-            ('onfocus=', '>'),
-            ('ontoggle=', '>'),
-            ('onstart=', '>'),
-            ('onloadstart=', '>'),
-            ('javascript:', ';'),
-        ]
-        
-        for start_indicator, end_indicator in xss_indicators:
-            if start_indicator in response_text:
-                # Get the context around the indicator
-                indicator_index = response_text.find(start_indicator)
-                context_start = max(0, indicator_index - 50)
-                context_end = min(len(response_text), indicator_index + 100)
-                context = response_text[context_start:context_end]
-                
-                # Skip if in HTML comment
-                if '<!--' in context and '-->' in context:
-                    continue
                     
-                # Skip if in a string
-                if context.count('"') % 2 == 1 or context.count("'") % 2 == 1:
-                    continue
-                
-                # Verify the indicator is properly terminated
-                if end_indicator in response_text[indicator_index:indicator_index+100]:
-                    return True
-                
-        return False
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking XSS success: {str(e)}")
+            return False
 
     def get_evidence_snippet(self, response: requests.Response, payload: str) -> str:
         """Get a snippet of the response containing the payload"""
