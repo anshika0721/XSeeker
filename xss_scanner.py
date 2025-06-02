@@ -189,95 +189,100 @@ class XSSScanner:
 
     def check_xss_success(self, response: requests.Response, payload: str) -> bool:
         """Check if XSS payload was successful"""
-        # Check for reflected payload
+        # Normalize the response text and payload for comparison
+        response_text = response.text.lower()
+        normalized_payload = payload.lower()
+        
+        # Check for reflected payload (exact match)
         if payload in response.text:
             return True
             
+        # Check for split/obfuscated payloads
+        if '<scr' in response_text and 'ipt>' in response_text:
+            # Look for split script tags
+            script_start = response_text.find('<scr')
+            script_end = response_text.find('ipt>', script_start)
+            if script_start != -1 and script_end != -1:
+                # Check if there's any content between the split parts
+                between_parts = response_text[script_start+4:script_end]
+                if any(c in between_parts for c in ['\n', '\t', '\r', '\x00', '\x0A', '\x0D', '\x09', '\x0C', '\x0B', '\x0E', '\x0F', '\x1A', '\x20']):
+                    return True
+        
         # Check for common XSS indicators
         xss_indicators = [
             '<script>',
             'alert(',
             'onerror=',
             'onload=',
+            'onclick=',
+            'onmouseover=',
+            'onfocus=',
+            'ontoggle=',
+            'onstart=',
+            'onloadstart=',
             'javascript:',
         ]
         
         for indicator in xss_indicators:
-            if indicator in response.text:
+            if indicator in response_text:
                 return True
                 
         return False
 
     def get_evidence_snippet(self, response: requests.Response, payload: str) -> str:
-        """Extract relevant snippet from response for evidence"""
+        """Get a snippet of the response containing the payload"""
         try:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            evidence = []
+            # Find the payload in the response
+            payload_index = response.text.find(payload)
+            if payload_index != -1:
+                # Get context around the payload
+                start = max(0, payload_index - 100)
+                end = min(len(response.text), payload_index + len(payload) + 100)
+                return response.text[start:end]
             
-            # Find the element containing the payload
-            for element in soup.find_all():
-                if payload in str(element):
-                    # Get parent element for context
-                    parent = element.parent
-                    if parent:
-                        evidence.append(f"Context: {parent.name}")
-                        evidence.append(f"Element: {element.name}")
-                        evidence.append(f"Content: {str(element)}")
-                        evidence.append(f"Full HTML: {str(parent)}")
-                        break
+            # If exact payload not found, look for split/obfuscated versions
+            if '<scr' in response.text and 'ipt>' in response.text:
+                script_start = response.text.find('<scr')
+                script_end = response.text.find('ipt>', script_start)
+                if script_start != -1 and script_end != -1:
+                    # Get context around the split script tag
+                    start = max(0, script_start - 100)
+                    end = min(len(response.text), script_end + 4 + 100)
+                    return response.text[start:end]
             
-            if not evidence:
-                # If no specific element found, get the first 1000 chars
-                evidence.append("No specific element found containing payload")
-                evidence.append("Response snippet:")
-                evidence.append(response.text[:1000])
+            # If no specific evidence found, return a portion of the response
+            return response.text[:200] + "..."
             
-            return "\n".join(evidence)
         except Exception as e:
-            self.logger.error(f"Error getting evidence: {str(e)}")
-            return response.text[:1000]
+            self.logger.error(f"Error getting evidence snippet: {str(e)}")
+            return "Error getting evidence snippet"
 
     def report_vulnerability(self, url: str, vuln_type: str, payload: str, response: requests.Response) -> None:
-        """Report found vulnerability with evidence and screenshot"""
-        # Generate unique ID for this vulnerability
-        vuln_id = hashlib.md5(f"{url}{payload}".encode()).hexdigest()[:8]
-        
-        # Check for duplicates using a more robust comparison
-        for existing_vuln in self.vulnerabilities:
-            if (existing_vuln['url'] == url and 
-                existing_vuln['type'] == vuln_type and 
-                existing_vuln['payload'].strip() == payload.strip()):
-                return
-        
-        # Capture screenshot
-        screenshot = self.capture_screenshot(url, payload)
-        screenshot_path = None
-        if screenshot:
-            screenshot_path = self.report_generator.save_screenshot(screenshot, vuln_id)
-        
-        # Get evidence snippet
+        """Report a found XSS vulnerability"""
         evidence = self.get_evidence_snippet(response, payload)
-        
-        # Get response headers
-        headers = dict(response.headers)
         
         vulnerability = {
             'url': url,
             'type': vuln_type,
             'payload': payload,
-            'response_length': len(response.text),
-            'status_code': response.status_code,
-            'screenshot': screenshot_path,
             'evidence': evidence,
-            'headers': headers,
-            'timestamp': datetime.now().isoformat(),
-            'vulnerability_id': vuln_id
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'response_code': response.status_code,
+            'response_headers': dict(response.headers),
         }
         
         self.vulnerabilities.append(vulnerability)
-        self.logger.warning(f"{Fore.RED}[!] Found XSS vulnerability in {url} ({vuln_type}){Style.RESET_ALL}")
+        
+        # Log the vulnerability
+        self.logger.warning(f"[!] Found XSS vulnerability in {url} ({vuln_type})")
         self.logger.warning(f"Payload: {payload}")
-        self.logger.warning(f"Evidence: {evidence[:100]}...")
+        self.logger.warning(f"Evidence: {evidence}")
+        
+        # Take screenshot if browser is available
+        if self.browser:
+            screenshot = self.capture_screenshot(url, payload)
+            if screenshot:
+                vulnerability['screenshot'] = screenshot
 
     def generate_report(self) -> None:
         """Generate detailed reports"""
