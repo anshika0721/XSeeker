@@ -7,7 +7,7 @@ import logging
 import hashlib
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, parse_qsl, urlunparse, urlencode
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set, Optional, NamedTuple
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import colorama
@@ -24,12 +24,27 @@ from datetime import datetime
 # Initialize colorama
 colorama.init()
 
+class Vulnerability(NamedTuple):
+    url: str
+    parameter: str
+    vuln_type: str
+    payload: str
+    evidence: str
+    context: str
+    status_code: int
+    response_length: int
+    headers: Dict
+    screenshot: Optional[bytes]
+    timestamp: str
+    severity: str
+    vulnerability_id: str
+
 class XSSScanner:
     def __init__(self, target_url: str, config: Dict = None):
         self.target_url = target_url
         self.config = config or {}
         self.session = requests.Session()
-        self.vulnerabilities = []
+        self.vulnerabilities: Set[Vulnerability] = set()
         self.visited_urls = set()
         self.payloads = XSSPayloads()
         self.report_generator = ReportGenerator()
@@ -139,18 +154,25 @@ class XSSScanner:
             
         form_url = urljoin(url, form_action)
         
-        for payload in self.payloads.get_all_payloads():
-            try:
-                if form_method == 'get':
-                    response = self.session.get(form_url, params={payload: payload})
-                else:
-                    response = self.session.post(form_url, data={payload: payload})
+        # Get all input fields in the form
+        inputs = form.find_all(['input', 'textarea'])
+        for input_field in inputs:
+            input_name = input_field.get('name', '')
+            if not input_name:
+                continue
                 
-                if self.check_xss_success(response, payload):
-                    self.report_vulnerability(url, 'form', payload, response)
+            for payload in self.payloads.get_all_payloads():
+                try:
+                    if form_method == 'get':
+                        response = self.session.get(form_url, params={input_name: payload})
+                    else:
+                        response = self.session.post(form_url, data={input_name: payload})
                     
-            except Exception as e:
-                self.logger.error(f"Error testing form XSS: {str(e)}")
+                    if self.check_xss_success(response, payload):
+                        self.report_vulnerability(url, 'form', payload, response, input_name)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error testing form XSS: {str(e)}")
 
     def test_input_xss(self, url: str, input_field: BeautifulSoup) -> None:
         """Test input field for XSS vulnerabilities"""
@@ -162,7 +184,7 @@ class XSSScanner:
             try:
                 response = self.session.get(url, params={input_name: payload})
                 if self.check_xss_success(response, payload):
-                    self.report_vulnerability(url, 'input', payload, response)
+                    self.report_vulnerability(url, 'input', payload, response, input_name)
                     
             except Exception as e:
                 self.logger.error(f"Error testing input XSS: {str(e)}")
@@ -177,15 +199,20 @@ class XSSScanner:
         if href.startswith(('mailto:', 'tel:', 'javascript:', '#')):
             return
             
-        for payload in self.payloads.get_all_payloads():
-            try:
-                test_url = urljoin(url, href)
-                response = self.session.get(test_url, params={'test': payload})
-                if self.check_xss_success(response, payload):
-                    self.report_vulnerability(url, 'link', payload, response)
-                    
-            except Exception as e:
-                self.logger.error(f"Error testing link XSS: {str(e)}")
+        # Extract parameters from the link
+        parsed_url = urlparse(href)
+        params = parse_qsl(parsed_url.query)
+        
+        for param_name, _ in params:
+            for payload in self.payloads.get_all_payloads():
+                try:
+                    test_url = urljoin(url, href)
+                    response = self.session.get(test_url, params={param_name: payload})
+                    if self.check_xss_success(response, payload):
+                        self.report_vulnerability(url, 'link', payload, response, param_name)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error testing link XSS: {str(e)}")
 
     def check_xss_success(self, response: requests.Response, payload: str) -> bool:
         """Check if XSS payload was successful with strict validation"""
@@ -305,32 +332,66 @@ class XSSScanner:
             self.logger.error(f"Error getting evidence snippet: {str(e)}")
             return "Error getting evidence snippet"
 
-    def report_vulnerability(self, url: str, vuln_type: str, payload: str, response: requests.Response) -> None:
-        """Report a found XSS vulnerability"""
+    def generate_vulnerability_id(self, url: str, parameter: str, vuln_type: str) -> str:
+        """Generate a unique vulnerability ID based on URL, parameter, and type"""
+        unique_string = f"{url}|{parameter}|{vuln_type}"
+        return hashlib.md5(unique_string.encode()).hexdigest()[:8]
+
+    def is_duplicate_vulnerability(self, url: str, parameter: str, vuln_type: str) -> bool:
+        """Check if a vulnerability is a duplicate"""
+        vuln_id = self.generate_vulnerability_id(url, parameter, vuln_type)
+        return any(v.vulnerability_id == vuln_id for v in self.vulnerabilities)
+
+    def get_vulnerability_context(self, response: requests.Response, payload: str) -> str:
+        """Extract the context around the vulnerability"""
+        try:
+            text = response.text
+            payload_index = text.find(payload)
+            if payload_index == -1:
+                return "Context not available"
+            
+            # Get 100 characters before and after the payload
+            start = max(0, payload_index - 100)
+            end = min(len(text), payload_index + len(payload) + 100)
+            context = text[start:end]
+            
+            # Clean up the context
+            context = re.sub(r'\s+', ' ', context)
+            return context.strip()
+        except Exception as e:
+            self.logger.error(f"Error getting vulnerability context: {str(e)}")
+            return "Context extraction failed"
+
+    def report_vulnerability(self, url: str, vuln_type: str, payload: str, response: requests.Response, parameter: str) -> None:
+        """Report a vulnerability with improved organization"""
+        if self.is_duplicate_vulnerability(url, parameter, vuln_type):
+            return
+
+        vuln_id = self.generate_vulnerability_id(url, parameter, vuln_type)
         evidence = self.get_evidence_snippet(response, payload)
+        context = self.get_vulnerability_context(response, payload)
         
-        vulnerability = {
-            'url': url,
-            'type': vuln_type,
-            'payload': payload,
-            'evidence': evidence,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'response_code': response.status_code,
-            'response_headers': dict(response.headers),
-        }
+        # Determine severity based on context and payload
+        severity = "high" if any(x in payload.lower() for x in ["script", "onerror", "onload"]) else "medium"
         
-        self.vulnerabilities.append(vulnerability)
+        vulnerability = Vulnerability(
+            url=url,
+            parameter=parameter,
+            vuln_type=vuln_type,
+            payload=payload,
+            evidence=evidence,
+            context=context,
+            status_code=response.status_code,
+            response_length=len(response.content),
+            headers=dict(response.headers),
+            screenshot=self.capture_screenshot(url, payload),
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            severity=severity,
+            vulnerability_id=vuln_id
+        )
         
-        # Log the vulnerability
-        self.logger.warning(f"[!] Found XSS vulnerability in {url} ({vuln_type})")
-        self.logger.warning(f"Payload: {payload}")
-        self.logger.warning(f"Evidence: {evidence}")
-        
-        # Take screenshot if browser is available
-        if self.browser:
-            screenshot = self.capture_screenshot(url, payload)
-            if screenshot:
-                vulnerability['screenshot'] = screenshot
+        self.vulnerabilities.add(vulnerability)
+        self.logger.info(f"Found XSS vulnerability in {url} (Parameter: {parameter}, Type: {vuln_type})")
 
     def generate_report(self) -> None:
         """Generate detailed reports"""
