@@ -166,7 +166,8 @@ class XSSScanner:
                     try:
                         if form_method == 'get':
                             # For GET requests, use params
-                            response = self.session.get(form_url, params={str(input_name): str(payload)})
+                            params = {str(input_name): str(payload)}
+                            response = self.session.get(form_url, params=params)
                         else:
                             # For POST requests, create form data
                             form_data = {}
@@ -207,7 +208,8 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     # Use params for GET requests
-                    response = self.session.get(url, params={str(input_name): str(payload)})
+                    params = {str(input_name): str(payload)}
+                    response = self.session.get(url, params=params)
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'input', payload, response, input_name)
                         
@@ -237,7 +239,8 @@ class XSSScanner:
                     try:
                         test_url = urljoin(url, href)
                         # Use params for GET requests
-                        response = self.session.get(test_url, params={str(param_name): str(payload)})
+                        test_params = {str(param_name): str(payload)}
+                        response = self.session.get(test_url, params=test_params)
                         if self.check_xss_success(response, payload):
                             self.report_vulnerability(url, 'link', payload, response, param_name)
                             
