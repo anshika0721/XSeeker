@@ -166,19 +166,19 @@ class XSSScanner:
                     try:
                         if form_method == 'get':
                             # For GET requests
-                            params = dict()
-                            params[input_name] = payload
+                            params = {}
+                            params[str(input_name)] = str(payload)
                             response = self.session.get(form_url, params=params)
                         else:
                             # For POST requests
-                            data = dict()
+                            data = {}
                             for field in inputs:
                                 name = field.get('name', '')
                                 if name:
                                     if name == input_name:
-                                        data[name] = payload
+                                        data[str(name)] = str(payload)
                                     else:
-                                        data[name] = field.get('value', '')
+                                        data[str(name)] = str(field.get('value', ''))
                             
                             response = self.session.post(form_url, data=data)
                         
@@ -201,8 +201,8 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     # Test GET request
-                    params = dict()
-                    params[input_name] = payload
+                    params = {}
+                    params[str(input_name)] = str(payload)
                     response = self.session.get(url, params=params)
                     
                     if self.check_xss_success(response, payload):
@@ -234,8 +234,8 @@ class XSSScanner:
                     try:
                         test_url = urljoin(url, href)
                         # Test GET request
-                        test_params = dict()
-                        test_params[param_name] = payload
+                        test_params = {}
+                        test_params[str(param_name)] = str(payload)
                         response = self.session.get(test_url, params=test_params)
                         
                         if self.check_xss_success(response, payload):
