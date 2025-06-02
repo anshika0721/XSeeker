@@ -166,13 +166,12 @@ class XSSScanner:
                     try:
                         if form_method == 'get':
                             # For GET requests
-                            response = self.session.get(
-                                form_url,
-                                params={input_name: payload}
-                            )
+                            params = dict()
+                            params[input_name] = payload
+                            response = self.session.get(form_url, params=params)
                         else:
                             # For POST requests
-                            data = {}
+                            data = dict()
                             for field in inputs:
                                 name = field.get('name', '')
                                 if name:
@@ -181,10 +180,7 @@ class XSSScanner:
                                     else:
                                         data[name] = field.get('value', '')
                             
-                            response = self.session.post(
-                                form_url,
-                                data=data
-                            )
+                            response = self.session.post(form_url, data=data)
                         
                         if self.check_xss_success(response, payload):
                             self.report_vulnerability(url, 'form', payload, response, input_name)
@@ -205,10 +201,9 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     # Test GET request
-                    response = self.session.get(
-                        url,
-                        params={input_name: payload}
-                    )
+                    params = dict()
+                    params[input_name] = payload
+                    response = self.session.get(url, params=params)
                     
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'input', payload, response, input_name)
@@ -239,10 +234,9 @@ class XSSScanner:
                     try:
                         test_url = urljoin(url, href)
                         # Test GET request
-                        response = self.session.get(
-                            test_url,
-                            params={param_name: payload}
-                        )
+                        test_params = dict()
+                        test_params[param_name] = payload
+                        response = self.session.get(test_url, params=test_params)
                         
                         if self.check_xss_success(response, payload):
                             self.report_vulnerability(url, 'link', payload, response, param_name)
