@@ -28,27 +28,155 @@ class ReportGenerator:
         <head>
             <title>XSS Vulnerability Report</title>
             <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                .vulnerability { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
-                .vulnerability:hover { box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-                .header { background: #f5f5f5; padding: 10px; margin: -15px -15px 15px -15px; border-radius: 5px 5px 0 0; }
-                .evidence { background: #f8f8f8; padding: 10px; border-radius: 3px; margin: 10px 0; }
-                .screenshot { max-width: 100%; margin: 10px 0; border: 1px solid #ddd; }
-                .payload { color: #d63384; font-family: monospace; }
-                .timestamp { color: #666; font-size: 0.9em; }
-                .headers { background: #f8f8f8; padding: 10px; border-radius: 3px; margin: 10px 0; }
-                .headers pre { margin: 0; white-space: pre-wrap; }
-                .vuln-id { color: #666; font-size: 0.9em; }
-                .severity-high { border-left: 5px solid #dc3545; }
-                .severity-medium { border-left: 5px solid #ffc107; }
-                .severity-low { border-left: 5px solid #0dcaf0; }
+                body { 
+                    font-family: Arial, sans-serif; 
+                    margin: 20px;
+                    line-height: 1.6;
+                    color: #333;
+                }
+                .vulnerability { 
+                    border: 1px solid #ddd; 
+                    margin: 20px 0; 
+                    padding: 20px; 
+                    border-radius: 8px;
+                    background: #fff;
+                }
+                .vulnerability:hover { 
+                    box-shadow: 0 0 15px rgba(0,0,0,0.1); 
+                }
+                .header { 
+                    background: #f8f9fa; 
+                    padding: 15px; 
+                    margin: -20px -20px 20px -20px; 
+                    border-radius: 8px 8px 0 0;
+                    border-bottom: 1px solid #ddd;
+                }
+                .evidence { 
+                    background: #f8f9fa; 
+                    padding: 15px; 
+                    border-radius: 6px; 
+                    margin: 15px 0;
+                    font-family: monospace;
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                }
+                .screenshot { 
+                    max-width: 100%; 
+                    margin: 15px 0; 
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                }
+                .payload { 
+                    color: #d63384; 
+                    font-family: monospace;
+                    background: #f8f9fa;
+                    padding: 10px;
+                    border-radius: 4px;
+                    margin: 10px 0;
+                }
+                .timestamp { 
+                    color: #666; 
+                    font-size: 0.9em;
+                    margin-top: 5px;
+                }
+                .headers { 
+                    background: #f8f9fa; 
+                    padding: 15px; 
+                    border-radius: 6px; 
+                    margin: 15px 0;
+                    font-family: monospace;
+                }
+                .headers pre { 
+                    margin: 0; 
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                }
+                .vuln-id { 
+                    color: #666; 
+                    font-size: 0.9em;
+                    font-family: monospace;
+                }
+                .severity-high { 
+                    border-left: 5px solid #dc3545; 
+                }
+                .severity-medium { 
+                    border-left: 5px solid #ffc107; 
+                }
+                .severity-low { 
+                    border-left: 5px solid #0dcaf0; 
+                }
+                .summary {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 30px;
+                }
+                .summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin-top: 15px;
+                }
+                .summary-item {
+                    background: white;
+                    padding: 15px;
+                    border-radius: 6px;
+                    text-align: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                .summary-item h3 {
+                    margin: 0;
+                    color: #666;
+                    font-size: 0.9em;
+                }
+                .summary-item p {
+                    margin: 10px 0 0 0;
+                    font-size: 1.5em;
+                    font-weight: bold;
+                    color: #333;
+                }
+                .parameter-info {
+                    background: #e9ecef;
+                    padding: 10px;
+                    border-radius: 4px;
+                    margin: 10px 0;
+                    font-family: monospace;
+                }
+                .context {
+                    background: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 6px;
+                    margin: 15px 0;
+                    font-family: monospace;
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                }
             </style>
         </head>
         <body>
             <h1>XSS Vulnerability Report</h1>
-            <p>Target URL: {{ target_url }}</p>
-            <p>Scan completed at: {{ scan_time }}</p>
-            <p>Total vulnerabilities found: {{ vulnerabilities|length }}</p>
+            
+            <div class="summary">
+                <h2>Scan Summary</h2>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <h3>Target URL</h3>
+                        <p>{{ target_url }}</p>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Scan Time</h3>
+                        <p>{{ scan_time }}</p>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Total Vulnerabilities</h3>
+                        <p>{{ vulnerabilities|length }}</p>
+                    </div>
+                    <div class="summary-item">
+                        <h3>High Severity</h3>
+                        <p>{{ vulnerabilities|selectattr('severity', 'equalto', 'high')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
             
             {% for vuln in vulnerabilities %}
             <div class="vulnerability severity-{{ vuln.severity|default('medium') }}">
@@ -58,23 +186,24 @@ class ReportGenerator:
                     <div class="timestamp">Found at: {{ vuln.timestamp }}</div>
                 </div>
                 
-                <h3>Details</h3>
+                <h3>Vulnerability Details</h3>
                 <ul>
                     <li><strong>URL:</strong> {{ vuln.url }}</li>
                     <li><strong>Type:</strong> {{ vuln.type }}</li>
+                    <li><strong>Parameter:</strong> <span class="parameter-info">{{ vuln.parameter }}</span></li>
+                    <li><strong>Severity:</strong> {{ vuln.severity|title }}</li>
                     <li><strong>Status Code:</strong> {{ vuln.status_code }}</li>
                     <li><strong>Response Length:</strong> {{ vuln.response_length }} bytes</li>
                 </ul>
 
                 <h3>Payload</h3>
-                <div class="evidence">
-                    <pre class="payload">{{ vuln.payload }}</pre>
-                </div>
+                <div class="payload">{{ vuln.payload }}</div>
+
+                <h3>Context</h3>
+                <div class="context">{{ vuln.context }}</div>
 
                 <h3>Evidence</h3>
-                <div class="evidence">
-                    <pre>{{ vuln.evidence }}</pre>
-                </div>
+                <div class="evidence">{{ vuln.evidence }}</div>
 
                 {% if vuln.screenshot %}
                 <h3>Screenshot</h3>
@@ -106,10 +235,10 @@ class ReportGenerator:
         # Process vulnerabilities to include base64 screenshots
         processed_vulns = []
         for vuln in vulnerabilities:
-            processed_vuln = vuln.copy()
-            if vuln.get('screenshot'):
+            processed_vuln = vuln._asdict() if hasattr(vuln, '_asdict') else vuln
+            if processed_vuln.get('screenshot'):
                 try:
-                    with open(vuln['screenshot'], 'rb') as f:
+                    with open(processed_vuln['screenshot'], 'rb') as f:
                         screenshot_data = base64.b64encode(f.read()).decode('utf-8')
                         processed_vuln['screenshot'] = screenshot_data
                 except Exception as e:
@@ -138,6 +267,13 @@ class ReportGenerator:
             self.output_dir,
             f"xss_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         )
+        
+        # Convert vulnerabilities to dictionaries if they are NamedTuples
+        processed_vulns = [
+            vuln._asdict() if hasattr(vuln, '_asdict') else vuln
+            for vuln in vulnerabilities
+        ]
+        
         with open(report_path, 'w', encoding='utf-8') as f:
-            json.dump(vulnerabilities, f, indent=4)
+            json.dump(processed_vulns, f, indent=4)
         return report_path 
