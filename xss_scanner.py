@@ -146,97 +146,106 @@ class XSSScanner:
 
     def test_form_xss(self, url: str, form: BeautifulSoup) -> None:
         """Test form for XSS vulnerabilities"""
-        form_action = form.get('action', '')
-        form_method = form.get('method', 'get').lower()
-        
-        if not form_action:
-            form_action = url
+        try:
+            form_action = form.get('action', '')
+            form_method = form.get('method', 'get').lower()
             
-        form_url = urljoin(url, form_action)
-        
-        # Get all input fields in the form
-        inputs = form.find_all(['input', 'textarea'])
-        for input_field in inputs:
-            input_name = input_field.get('name', '')
-            if not input_name:
-                continue
+            if not form_action:
+                form_action = url
                 
-            for payload in self.payloads.get_all_payloads():
-                try:
-                    if form_method == 'get':
-                        # For GET requests, use params
-                        response = self.session.get(form_url, params={input_name: payload})
-                    else:
-                        # For POST requests, create form data
-                        form_data = {}
-                        for field in inputs:
-                            field_name = field.get('name', '')
-                            if field_name:
-                                if field_name == input_name:
-                                    form_data[field_name] = payload
-                                else:
-                                    # Set default values for other fields
-                                    field_type = field.get('type', '').lower()
-                                    if field_type in ['text', 'search', 'url', 'email', 'tel']:
-                                        form_data[field_name] = 'test'
-                                    elif field_type in ['checkbox', 'radio']:
-                                        form_data[field_name] = field.get('value', 'on')
-                                    else:
-                                        form_data[field_name] = field.get('value', '')
-                        
-                        # Use data parameter for POST requests
-                        response = self.session.post(form_url, data=form_data)
+            form_url = urljoin(url, form_action)
+            
+            # Get all input fields in the form
+            inputs = form.find_all(['input', 'textarea'])
+            for input_field in inputs:
+                input_name = input_field.get('name', '')
+                if not input_name:
+                    continue
                     
-                    if self.check_xss_success(response, payload):
-                        self.report_vulnerability(url, 'form', payload, response, input_name)
+                for payload in self.payloads.get_all_payloads():
+                    try:
+                        if form_method == 'get':
+                            # For GET requests, use params
+                            response = self.session.get(form_url, params={str(input_name): str(payload)})
+                        else:
+                            # For POST requests, create form data
+                            form_data = {}
+                            for field in inputs:
+                                field_name = field.get('name', '')
+                                if field_name:
+                                    if field_name == input_name:
+                                        form_data[str(field_name)] = str(payload)
+                                    else:
+                                        # Set default values for other fields
+                                        field_type = field.get('type', '').lower()
+                                        if field_type in ['text', 'search', 'url', 'email', 'tel']:
+                                            form_data[str(field_name)] = 'test'
+                                        elif field_type in ['checkbox', 'radio']:
+                                            form_data[str(field_name)] = field.get('value', 'on')
+                                        else:
+                                            form_data[str(field_name)] = field.get('value', '')
+                            
+                            # Use data parameter for POST requests
+                            response = self.session.post(form_url, data=form_data)
                         
-                except Exception as e:
-                    self.logger.error(f"Error testing form XSS: {str(e)}")
-                    self.logger.debug(f"Form URL: {form_url}, Input: {input_name}, Payload: {payload}")
+                        if self.check_xss_success(response, payload):
+                            self.report_vulnerability(url, 'form', payload, response, input_name)
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error testing form XSS: {str(e)}")
+                        self.logger.debug(f"Form URL: {form_url}, Input: {input_name}, Payload: {payload}")
+        except Exception as e:
+            self.logger.error(f"Error processing form: {str(e)}")
 
     def test_input_xss(self, url: str, input_field: BeautifulSoup) -> None:
         """Test input field for XSS vulnerabilities"""
-        input_name = input_field.get('name', '')
-        if not input_name:
-            return
-            
-        for payload in self.payloads.get_all_payloads():
-            try:
-                # Use params for GET requests
-                response = self.session.get(url, params={input_name: payload})
-                if self.check_xss_success(response, payload):
-                    self.report_vulnerability(url, 'input', payload, response, input_name)
-                    
-            except Exception as e:
-                self.logger.error(f"Error testing input XSS: {str(e)}")
-                self.logger.debug(f"URL: {url}, Input: {input_name}, Payload: {payload}")
+        try:
+            input_name = input_field.get('name', '')
+            if not input_name:
+                return
+                
+            for payload in self.payloads.get_all_payloads():
+                try:
+                    # Use params for GET requests
+                    response = self.session.get(url, params={str(input_name): str(payload)})
+                    if self.check_xss_success(response, payload):
+                        self.report_vulnerability(url, 'input', payload, response, input_name)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error testing input XSS: {str(e)}")
+                    self.logger.debug(f"URL: {url}, Input: {input_name}, Payload: {payload}")
+        except Exception as e:
+            self.logger.error(f"Error processing input field: {str(e)}")
 
     def test_link_xss(self, url: str, link: BeautifulSoup) -> None:
         """Test link for XSS vulnerabilities"""
-        href = link.get('href', '')
-        if not href:
-            return
+        try:
+            href = link.get('href', '')
+            if not href:
+                return
+                
+            # Skip mailto: links and other non-http(s) protocols
+            if href.startswith(('mailto:', 'tel:', 'javascript:', '#')):
+                return
+                
+            # Extract parameters from the link
+            parsed_url = urlparse(href)
+            params = parse_qsl(parsed_url.query)
             
-        # Skip mailto: links and other non-http(s) protocols
-        if href.startswith(('mailto:', 'tel:', 'javascript:', '#')):
-            return
-            
-        # Extract parameters from the link
-        parsed_url = urlparse(href)
-        params = parse_qsl(parsed_url.query)
-        
-        for param_name, _ in params:
-            for payload in self.payloads.get_all_payloads():
-                try:
-                    test_url = urljoin(url, href)
-                    # Use params for GET requests
-                    response = self.session.get(test_url, params={param_name: payload})
-                    if self.check_xss_success(response, payload):
-                        self.report_vulnerability(url, 'link', payload, response, param_name)
-                        
-                except Exception as e:
-                    self.logger.error(f"Error testing link XSS: {str(e)}")
-                    self.logger.debug(f"URL: {test_url}, Parameter: {param_name}, Payload: {payload}")
+            for param_name, _ in params:
+                for payload in self.payloads.get_all_payloads():
+                    try:
+                        test_url = urljoin(url, href)
+                        # Use params for GET requests
+                        response = self.session.get(test_url, params={str(param_name): str(payload)})
+                        if self.check_xss_success(response, payload):
+                            self.report_vulnerability(url, 'link', payload, response, param_name)
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error testing link XSS: {str(e)}")
+                        self.logger.debug(f"URL: {test_url}, Parameter: {param_name}, Payload: {payload}")
+        except Exception as e:
+            self.logger.error(f"Error processing link: {str(e)}")
 
     def check_xss_success(self, response: requests.Response, payload: str) -> bool:
         """Check if XSS payload was successful with strict validation"""
