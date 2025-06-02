@@ -165,29 +165,26 @@ class XSSScanner:
                 for payload in self.payloads.get_all_payloads():
                     try:
                         if form_method == 'get':
-                            # For GET requests, use params
-                            params = {str(input_name): str(payload)}
-                            response = self.session.get(form_url, params=params)
+                            # For GET requests
+                            response = self.session.get(
+                                form_url,
+                                params={input_name: payload}
+                            )
                         else:
-                            # For POST requests, create form data
-                            form_data = {}
+                            # For POST requests
+                            data = {}
                             for field in inputs:
-                                field_name = field.get('name', '')
-                                if field_name:
-                                    if field_name == input_name:
-                                        form_data[str(field_name)] = str(payload)
+                                name = field.get('name', '')
+                                if name:
+                                    if name == input_name:
+                                        data[name] = payload
                                     else:
-                                        # Set default values for other fields
-                                        field_type = field.get('type', '').lower()
-                                        if field_type in ['text', 'search', 'url', 'email', 'tel']:
-                                            form_data[str(field_name)] = 'test'
-                                        elif field_type in ['checkbox', 'radio']:
-                                            form_data[str(field_name)] = field.get('value', 'on')
-                                        else:
-                                            form_data[str(field_name)] = field.get('value', '')
+                                        data[name] = field.get('value', '')
                             
-                            # Use data parameter for POST requests
-                            response = self.session.post(form_url, data=form_data)
+                            response = self.session.post(
+                                form_url,
+                                data=data
+                            )
                         
                         if self.check_xss_success(response, payload):
                             self.report_vulnerability(url, 'form', payload, response, input_name)
@@ -207,9 +204,12 @@ class XSSScanner:
                 
             for payload in self.payloads.get_all_payloads():
                 try:
-                    # Use params for GET requests
-                    params = {str(input_name): str(payload)}
-                    response = self.session.get(url, params=params)
+                    # Test GET request
+                    response = self.session.get(
+                        url,
+                        params={input_name: payload}
+                    )
+                    
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'input', payload, response, input_name)
                         
@@ -238,9 +238,12 @@ class XSSScanner:
                 for payload in self.payloads.get_all_payloads():
                     try:
                         test_url = urljoin(url, href)
-                        # Use params for GET requests
-                        test_params = {str(param_name): str(payload)}
-                        response = self.session.get(test_url, params=test_params)
+                        # Test GET request
+                        response = self.session.get(
+                            test_url,
+                            params={param_name: payload}
+                        )
+                        
                         if self.check_xss_success(response, payload):
                             self.report_vulnerability(url, 'link', payload, response, param_name)
                             
