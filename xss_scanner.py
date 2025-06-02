@@ -166,13 +166,31 @@ class XSSScanner:
                     if form_method == 'get':
                         response = self.session.get(form_url, params={input_name: payload})
                     else:
-                        response = self.session.post(form_url, data={input_name: payload})
+                        # For POST requests, create a dictionary with all form fields
+                        form_data = {}
+                        for field in inputs:
+                            field_name = field.get('name', '')
+                            if field_name:
+                                if field_name == input_name:
+                                    form_data[field_name] = payload
+                                else:
+                                    # Set default values for other fields
+                                    field_type = field.get('type', '').lower()
+                                    if field_type in ['text', 'search', 'url', 'email', 'tel']:
+                                        form_data[field_name] = 'test'
+                                    elif field_type in ['checkbox', 'radio']:
+                                        form_data[field_name] = field.get('value', 'on')
+                                    else:
+                                        form_data[field_name] = field.get('value', '')
+                        
+                        response = self.session.post(form_url, data=form_data)
                     
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'form', payload, response, input_name)
                         
                 except Exception as e:
                     self.logger.error(f"Error testing form XSS: {str(e)}")
+                    self.logger.debug(f"Form URL: {form_url}, Input: {input_name}, Payload: {payload}")
 
     def test_input_xss(self, url: str, input_field: BeautifulSoup) -> None:
         """Test input field for XSS vulnerabilities"""
@@ -182,12 +200,15 @@ class XSSScanner:
             
         for payload in self.payloads.get_all_payloads():
             try:
-                response = self.session.get(url, params={input_name: payload})
+                # Create a dictionary with the input parameter
+                params = {input_name: payload}
+                response = self.session.get(url, params=params)
                 if self.check_xss_success(response, payload):
                     self.report_vulnerability(url, 'input', payload, response, input_name)
                     
             except Exception as e:
                 self.logger.error(f"Error testing input XSS: {str(e)}")
+                self.logger.debug(f"URL: {url}, Input: {input_name}, Payload: {payload}")
 
     def test_link_xss(self, url: str, link: BeautifulSoup) -> None:
         """Test link for XSS vulnerabilities"""
@@ -207,12 +228,15 @@ class XSSScanner:
             for payload in self.payloads.get_all_payloads():
                 try:
                     test_url = urljoin(url, href)
-                    response = self.session.get(test_url, params={param_name: payload})
+                    # Create a dictionary with the parameter
+                    test_params = {param_name: payload}
+                    response = self.session.get(test_url, params=test_params)
                     if self.check_xss_success(response, payload):
                         self.report_vulnerability(url, 'link', payload, response, param_name)
                         
                 except Exception as e:
                     self.logger.error(f"Error testing link XSS: {str(e)}")
+                    self.logger.debug(f"URL: {test_url}, Parameter: {param_name}, Payload: {payload}")
 
     def check_xss_success(self, response: requests.Response, payload: str) -> bool:
         """Check if XSS payload was successful with strict validation"""
