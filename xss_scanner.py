@@ -58,6 +58,10 @@ class XSSScanner:
         self.report_generator = ReportGenerator()
         self.setup_logging()
         self.setup_browser()
+        # Add rate limiting configuration
+        self.rate_limit_delay = self.config.get('rate_limit_delay', 1.0)  # Default 1 second between requests
+        self.max_retries = self.config.get('max_retries', 3)  # Default 3 retries
+        self.last_request_time = 0
 
     def setup_logging(self):
         logging.basicConfig(
@@ -152,6 +156,28 @@ class XSSScanner:
         except Exception as e:
             self.logger.error(f"Error scanning {url}: {str(e)}")
 
+    def _rate_limit(self):
+        """Implement rate limiting between requests"""
+        current_time = time.time()
+        time_since_last_request = current_time - self.last_request_time
+        if time_since_last_request < self.rate_limit_delay:
+            time.sleep(self.rate_limit_delay - time_since_last_request)
+        self.last_request_time = time.time()
+
+    def _make_request(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
+        """Make HTTP request with rate limiting and retries"""
+        for attempt in range(self.max_retries):
+            try:
+                self._rate_limit()
+                response = self.session.request(method, url, **kwargs)
+                return response
+            except requests.exceptions.RequestException as e:
+                if attempt == self.max_retries - 1:
+                    self.logger.error(f"Request failed after {self.max_retries} attempts: {str(e)}")
+                    return None
+                time.sleep(self.rate_limit_delay * (attempt + 1))  # Exponential backoff
+        return None
+
     def test_form_xss(self, url: str, form: BeautifulSoup) -> None:
         """Test form for XSS vulnerabilities"""
         try:
@@ -176,7 +202,7 @@ class XSSScanner:
                         if form_method == 'get':
                             # For GET requests
                             test_params = {str(input_name): payload_str}
-                            response = self.session.get(form_url, params=test_params)
+                            response = self._make_request('GET', form_url, params=test_params)
                         else:
                             # For POST requests
                             data = {}
@@ -191,9 +217,9 @@ class XSSScanner:
                                             value = ''
                                         data[str(name)] = str(value)
                             
-                            response = self.session.post(form_url, data=data)
+                            response = self._make_request('POST', form_url, data=data)
                         
-                        if self.check_xss_success(response, payload_str):
+                        if response and self.check_xss_success(response, payload_str):
                             self.report_vulnerability(url, 'form', payload_str, response, input_name)
                             
                     except Exception as e:
@@ -247,9 +273,9 @@ class XSSScanner:
                         test_url = urljoin(url, href)
                         # Test GET request with single parameter
                         test_params = {str(param_name): payload_str}
-                        response = self.session.get(test_url, params=test_params)
+                        response = self._make_request('GET', test_url, params=test_params)
                         
-                        if self.check_xss_success(response, payload_str):
+                        if response and self.check_xss_success(response, payload_str):
                             self.report_vulnerability(url, 'link', payload_str, response, param_name)
                             
                     except Exception as e:
