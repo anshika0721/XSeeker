@@ -178,7 +178,10 @@ class XSSScanner:
                                     if name == input_name:
                                         data[str(name)] = str(payload)
                                     else:
-                                        data[str(name)] = str(field.get('value', ''))
+                                        value = field.get('value', '')
+                                        if value is None:
+                                            value = ''
+                                        data[str(name)] = str(value)
                             
                             response = self.session.post(form_url, data=data)
                         
