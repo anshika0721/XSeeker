@@ -164,9 +164,10 @@ class XSSScanner:
                     
                 for payload in self.payloads.get_all_payloads():
                     try:
+                        payload_str = str(payload)
                         if form_method == 'get':
                             # For GET requests
-                            test_params = {str(input_name): str(payload)}
+                            test_params = {str(input_name): payload_str}
                             response = self.session.get(form_url, params=test_params)
                         else:
                             # For POST requests
@@ -175,7 +176,7 @@ class XSSScanner:
                                 name = field.get('name', '')
                                 if name:
                                     if name == input_name:
-                                        data[str(name)] = str(payload)
+                                        data[str(name)] = payload_str
                                     else:
                                         value = field.get('value', '')
                                         if value is None:
@@ -184,8 +185,8 @@ class XSSScanner:
                             
                             response = self.session.post(form_url, data=data)
                         
-                        if self.check_xss_success(response, str(payload)):
-                            self.report_vulnerability(url, 'form', str(payload), response, input_name)
+                        if self.check_xss_success(response, payload_str):
+                            self.report_vulnerability(url, 'form', payload_str, response, input_name)
                             
                     except Exception as e:
                         self.logger.error(f"Error testing form XSS: {str(e)}")
@@ -234,13 +235,14 @@ class XSSScanner:
             for param_name in params.keys():
                 for payload in self.payloads.get_all_payloads():
                     try:
+                        payload_str = str(payload)
                         test_url = urljoin(url, href)
                         # Test GET request with single parameter
-                        test_params = {str(param_name): str(payload)}
+                        test_params = {str(param_name): payload_str}
                         response = self.session.get(test_url, params=test_params)
                         
-                        if self.check_xss_success(response, str(payload)):
-                            self.report_vulnerability(url, 'link', str(payload), response, param_name)
+                        if self.check_xss_success(response, payload_str):
+                            self.report_vulnerability(url, 'link', payload_str, response, param_name)
                             
                     except Exception as e:
                         self.logger.error(f"Error testing link XSS: {str(e)}")
