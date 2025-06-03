@@ -184,8 +184,8 @@ class XSSScanner:
                             
                             response = self.session.post(form_url, data=data)
                         
-                        if self.check_xss_success(response, payload):
-                            self.report_vulnerability(url, 'form', payload, response, input_name)
+                        if self.check_xss_success(response, str(payload)):
+                            self.report_vulnerability(url, 'form', str(payload), response, input_name)
                             
                     except Exception as e:
                         self.logger.error(f"Error testing form XSS: {str(e)}")
@@ -239,8 +239,8 @@ class XSSScanner:
                         test_params = {str(param_name): str(payload)}
                         response = self.session.get(test_url, params=test_params)
                         
-                        if self.check_xss_success(response, payload):
-                            self.report_vulnerability(url, 'link', payload, response, param_name)
+                        if self.check_xss_success(response, str(payload)):
+                            self.report_vulnerability(url, 'link', str(payload), response, param_name)
                             
                     except Exception as e:
                         self.logger.error(f"Error testing link XSS: {str(e)}")
