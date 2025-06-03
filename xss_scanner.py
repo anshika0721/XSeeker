@@ -166,9 +166,8 @@ class XSSScanner:
                     try:
                         if form_method == 'get':
                             # For GET requests
-                            params = {}
-                            params[str(input_name)] = str(payload)
-                            response = self.session.get(form_url, params=params)
+                            test_params = {str(input_name): str(payload)}
+                            response = self.session.get(form_url, params=test_params)
                         else:
                             # For POST requests
                             data = {}
@@ -230,15 +229,14 @@ class XSSScanner:
                 
             # Extract parameters from the link
             parsed_url = urlparse(href)
-            params = parse_qsl(parsed_url.query)
+            params = dict(parse_qsl(parsed_url.query))
             
-            for param_name, _ in params:
+            for param_name in params.keys():
                 for payload in self.payloads.get_all_payloads():
                     try:
                         test_url = urljoin(url, href)
-                        # Test GET request
-                        test_params = {}
-                        test_params[str(param_name)] = str(payload)
+                        # Test GET request with single parameter
+                        test_params = {str(param_name): str(payload)}
                         response = self.session.get(test_url, params=test_params)
                         
                         if self.check_xss_success(response, payload):
