@@ -453,13 +453,20 @@ class XSSScanner:
             
         print(f"\n{Fore.YELLOW}[*] Generating XSS Scan Reports{Style.RESET_ALL}")
         
-        # Generate HTML report
-        html_report = self.report_generator.generate_report(self.target_url, self.vulnerabilities)
-        print(f"{Fore.GREEN}[+] HTML report saved to: {html_report}{Style.RESET_ALL}")
-        
-        # Generate JSON report
-        json_report = self.report_generator.save_json_report(self.vulnerabilities)
-        print(f"{Fore.GREEN}[+] JSON report saved to: {json_report}{Style.RESET_ALL}")
+        try:
+            # Generate HTML report
+            html_report = self.report_generator.generate_report(self.target_url, self.vulnerabilities)
+            if html_report:
+                print(f"{Fore.GREEN}[+] HTML report saved to: {html_report}{Style.RESET_ALL}")
+            
+            # Generate JSON report
+            json_report = self.report_generator.save_json_report(self.vulnerabilities)
+            if json_report:
+                print(f"{Fore.GREEN}[+] JSON report saved to: {json_report}{Style.RESET_ALL}")
+                
+        except Exception as e:
+            self.logger.error(f"Error generating reports: {str(e)}")
+            print(f"{Fore.RED}[!] Error generating reports. Check the log file for details.{Style.RESET_ALL}")
 
     def start_scan(self) -> None:
         """Start the XSS scanning process"""
