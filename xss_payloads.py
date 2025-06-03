@@ -107,12 +107,12 @@ class XSSPayloads:
 
     def get_all_payloads(self):
         """Get all unique payloads from all categories"""
-        all_payloads = []
+        all_payloads = set()  # Use a set to ensure uniqueness
         for category in self.payloads.values():
             for payload in category:
                 if isinstance(payload, str):
-                    all_payloads.append(str(payload))
-        return all_payloads
+                    all_payloads.add(str(payload))
+        return list(all_payloads)  # Convert back to list for iteration
 
     def get_payloads_by_category(self, category):
         """Get payloads for a specific category"""
