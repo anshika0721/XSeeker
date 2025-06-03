@@ -39,12 +39,20 @@ class Vulnerability(NamedTuple):
     severity: str
     vulnerability_id: str
 
+    def __hash__(self):
+        return hash(self.vulnerability_id)
+
+    def __eq__(self, other):
+        if not isinstance(other, Vulnerability):
+            return False
+        return self.vulnerability_id == other.vulnerability_id
+
 class XSSScanner:
     def __init__(self, target_url: str, config: Dict = None):
         self.target_url = target_url
         self.config = config or {}
         self.session = requests.Session()
-        self.vulnerabilities: Set[Vulnerability] = set()
+        self.vulnerabilities = set()
         self.visited_urls = set()
         self.payloads = XSSPayloads()
         self.report_generator = ReportGenerator()
@@ -415,24 +423,27 @@ class XSSScanner:
         # Determine severity based on context and payload
         severity = "high" if any(x in payload.lower() for x in ["script", "onerror", "onload"]) else "medium"
         
-        vulnerability = Vulnerability(
-            url=url,
-            parameter=parameter,
-            vuln_type=vuln_type,
-            payload=payload,
-            evidence=evidence,
-            context=context,
-            status_code=response.status_code,
-            response_length=len(response.content),
-            headers=dict(response.headers),
-            screenshot=self.capture_screenshot(url, payload),
-            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            severity=severity,
-            vulnerability_id=vuln_id
-        )
-        
-        self.vulnerabilities.add(vulnerability)
-        self.logger.info(f"Found XSS vulnerability in {url} (Parameter: {parameter}, Type: {vuln_type})")
+        try:
+            vulnerability = Vulnerability(
+                url=str(url),
+                parameter=str(parameter),
+                vuln_type=str(vuln_type),
+                payload=str(payload),
+                evidence=str(evidence),
+                context=str(context),
+                status_code=int(response.status_code),
+                response_length=int(len(response.content)),
+                headers=dict(response.headers),
+                screenshot=self.capture_screenshot(url, payload),
+                timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                severity=str(severity),
+                vulnerability_id=str(vuln_id)
+            )
+            
+            self.vulnerabilities.add(vulnerability)
+            self.logger.info(f"Found XSS vulnerability in {url} (Parameter: {parameter}, Type: {vuln_type})")
+        except Exception as e:
+            self.logger.error(f"Error creating vulnerability object: {str(e)}")
 
     def generate_report(self) -> None:
         """Generate detailed reports"""
