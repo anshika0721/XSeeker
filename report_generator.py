@@ -228,6 +228,32 @@ class ReportGenerator:
             f.write(screenshot_data)
         return filepath
 
+    def save_json_report(self, vulnerabilities: List[Dict]) -> str:
+        """Save vulnerabilities to a JSON file"""
+        try:
+            # Process vulnerabilities to handle binary data
+            processed_vulns = []
+            for vuln in vulnerabilities:
+                processed_vuln = vuln._asdict() if hasattr(vuln, '_asdict') else vuln
+                # Convert screenshot to base64 if present
+                if processed_vuln.get('screenshot'):
+                    try:
+                        if isinstance(processed_vuln['screenshot'], bytes):
+                            processed_vuln['screenshot'] = base64.b64encode(processed_vuln['screenshot']).decode('utf-8')
+                    except Exception as e:
+                        logging.error(f"Error processing screenshot: {str(e)}")
+                        processed_vuln['screenshot'] = None
+                processed_vulns.append(processed_vuln)
+            
+            # Save to JSON file
+            report_path = os.path.join(self.output_dir, f'xss_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
+            with open(report_path, 'w', encoding='utf-8') as f:
+                json.dump(processed_vulns, f, indent=4)
+            return report_path
+        except Exception as e:
+            logging.error(f"Error saving JSON report: {str(e)}")
+            return None
+
     def generate_report(self, target_url: str, vulnerabilities: List[Dict]) -> str:
         """Generate HTML report with embedded screenshots"""
         template = self._load_template()
@@ -238,9 +264,8 @@ class ReportGenerator:
             processed_vuln = vuln._asdict() if hasattr(vuln, '_asdict') else vuln
             if processed_vuln.get('screenshot'):
                 try:
-                    with open(processed_vuln['screenshot'], 'rb') as f:
-                        screenshot_data = base64.b64encode(f.read()).decode('utf-8')
-                        processed_vuln['screenshot'] = screenshot_data
+                    if isinstance(processed_vuln['screenshot'], bytes):
+                        processed_vuln['screenshot'] = base64.b64encode(processed_vuln['screenshot']).decode('utf-8')
                 except Exception as e:
                     logging.error(f"Error processing screenshot: {str(e)}")
                     processed_vuln['screenshot'] = None
@@ -259,21 +284,4 @@ class ReportGenerator:
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
             
-        return report_path
-
-    def save_json_report(self, vulnerabilities: List[Dict]) -> str:
-        """Save vulnerabilities in JSON format"""
-        report_path = os.path.join(
-            self.output_dir,
-            f"xss_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        )
-        
-        # Convert vulnerabilities to dictionaries if they are NamedTuples
-        processed_vulns = [
-            vuln._asdict() if hasattr(vuln, '_asdict') else vuln
-            for vuln in vulnerabilities
-        ]
-        
-        with open(report_path, 'w', encoding='utf-8') as f:
-            json.dump(processed_vulns, f, indent=4)
         return report_path 
